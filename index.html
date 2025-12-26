@@ -1,0 +1,2528 @@
+<!DOCTYPE html>
+<html lang="zh-Hant-HK">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>香港政府公開數據地圖查詢系統</title>
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- PapaParse for CSV parsing -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', 'Microsoft JhengHei', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            background-color: #f5f5f5;
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #2c6c91, #2c3e50);
+            color: white;
+            padding: 15px 20px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            z-index: 1000;
+        }
+
+        .header h1 {
+            font-size: 1.5rem;
+            margin-bottom: 5px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .header h1 i {
+            color: #ffcc00;
+        }
+
+        .header p {
+            font-size: 0.9rem;
+            opacity: 0.9;
+            max-width: 800px;
+        }
+
+        .container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* Accordion Styles */
+        .accordion-panel {
+            width: 450px;
+            background-color: white;
+            border-right: 1px solid #ddd;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 2px 0 8px rgba(0, 0, 0, 0.05);
+            z-index: 500;
+            transition: transform 0.3s ease;
+        }
+
+        .accordion {
+            flex: 1;
+            overflow-y: auto;
+            padding: 15px;
+        }
+
+        .data-source-item {
+            margin-bottom: 15px;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+            border: 1px solid #e0e0e0;
+        }
+
+        .data-source-header {
+            background-color: #2c6c91;
+            color: white;
+            padding: 15px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: 600;
+            transition: background-color 0.2s;
+        }
+
+        .data-source-header:hover {
+            background-color: #1a5c7a;
+        }
+
+        .data-source-header.active {
+            background-color: #2c3e50;
+        }
+
+        .data-source-content {
+            background-color: white;
+            padding: 0;
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease, padding 0.3s ease;
+        }
+
+        .data-source-content.active {
+            padding: 20px;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+
+        /* Data group accordion styles */
+        .data-group-accordion {
+            margin-bottom: 10px;
+        }
+
+        .data-group-header {
+            background-color: #4a90e2;
+            color: white;
+            padding: 12px 15px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: 600;
+            border-radius: 6px;
+            margin-bottom: 5px;
+            transition: background-color 0.2s;
+        }
+
+        .data-group-header:hover {
+            background-color: #3a80d2;
+        }
+
+        .data-group-header.active {
+            background-color: #2c6c91;
+        }
+
+        .data-group-content {
+            background-color: #f8f9fa;
+            padding: 0;
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease, padding 0.3s ease;
+            border-radius: 0 0 6px 6px;
+        }
+
+        .data-group-content.active {
+            padding: 15px;
+            overflow-y: auto;
+        }
+
+        .data-item {
+            background-color: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            padding: 15px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .data-item:hover {
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            border-color: #4a90e2;
+        }
+
+        .data-item.active {
+            border-color: #ffcc00;
+            background-color: #fff9e6;
+        }
+
+        .data-item-name {
+            font-weight: 600;
+            color: #2c3e50;
+            margin-bottom: 8px;
+            font-size: 1rem;
+        }
+
+        .data-item-details {
+            font-size: 0.9rem;
+            color: #666;
+            line-height: 1.5;
+        }
+
+        .data-detail-item {
+            margin-bottom: 5px;
+            display: flex;
+            align-items: flex-start;
+        }
+
+        .data-detail-item i {
+            color: #2c6c91;
+            margin-right: 8px;
+            margin-top: 3px;
+            width: 16px;
+        }
+
+        .control-group {
+            margin-bottom: 15px;
+        }
+
+        .control-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #333;
+        }
+
+        .btn {
+            background-color: #2c6c91;
+            color: white;
+            border: none;
+            padding: 12px 18px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            width: 100%;
+            transition: background-color 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+
+        .btn:hover {
+            background-color: #1a5c7a;
+        }
+
+        .btn.active {
+            background-color: #2c3e50;
+        }
+
+        .btn-danger {
+            background-color: #e74c3c;
+        }
+
+        .btn-danger:hover {
+            background-color: #c0392b;
+        }
+
+        .btn-success {
+            background-color: #27ae60;
+        }
+
+        .btn-success:hover {
+            background-color: #219653;
+        }
+
+        .btn-small {
+            padding: 6px 12px;
+            font-size: 0.9rem;
+            width: auto;
+        }
+
+        .info-box {
+            background-color: #f8f9fa;
+            border-radius: 6px;
+            padding: 15px;
+            margin-bottom: 15px;
+            border-left: 4px solid #2c6c91;
+            font-size: 0.9rem;
+        }
+
+        .info-box h4 {
+            margin-bottom: 8px;
+            color: #2c3e50;
+        }
+
+        /* Search Box */
+        .search-box {
+            margin-bottom: 15px;
+        }
+
+        .search-input {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            font-size: 1rem;
+            transition: border-color 0.2s;
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: #2c6c91;
+        }
+
+        /* Map Styles */
+        .map-container {
+            flex: 1;
+            position: relative;
+        }
+
+        #map {
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        /* Footer Styles */
+        .footer {
+            background-color: #2c3e50;
+            color: white;
+            padding: 6px 20px;
+            text-align: center;
+            font-size: 0.85rem;
+            border-top: 1px solid #4a6491;
+            z-index: 1000;
+        }
+
+        .footer-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .footer-links {
+            display: flex;
+            gap: 15px;
+        }
+
+        .footer-links a {
+            color: #ecf0f1;
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+
+        .footer-links a:hover {
+            color: #3498db;
+        }
+
+        /* Mobile Responsiveness */
+        @media (max-width: 768px) {
+            .container {
+                flex-direction: column;
+            }
+
+            .accordion-panel {
+                width: 100%;
+                height: 40vh;
+                border-right: none;
+                border-bottom: 1px solid #ddd;
+            }
+
+            .header h1 {
+                font-size: 1.3rem;
+            }
+
+            .header p {
+                font-size: 0.85rem;
+            }
+
+            .data-source-header {
+                padding: 12px 15px;
+                font-size: 0.95rem;
+            }
+
+            .btn {
+                padding: 10px 15px;
+                font-size: 0.95rem;
+            }
+
+            .footer-content {
+                flex-direction: column;
+                gap: 8px;
+                text-align: center;
+            }
+
+            .footer-links {
+                justify-content: center;
+            }
+        }
+
+        /* For very small screens like iPhone SE */
+        @media (max-width: 375px) {
+            .header {
+                padding: 12px 15px;
+            }
+
+            .header h1 {
+                font-size: 1.2rem;
+            }
+
+            .header p {
+                font-size: 0.8rem;
+            }
+
+            .accordion {
+                padding: 10px;
+            }
+
+            .data-source-header {
+                padding: 10px 12px;
+                font-size: 0.9rem;
+            }
+
+            .data-source-content.active {
+                padding: 15px;
+            }
+
+            .btn {
+                padding: 8px 12px;
+                font-size: 0.9rem;
+            }
+
+            .footer {
+                padding: 10px 15px;
+                font-size: 0.8rem;
+            }
+        }
+
+        /* Stats Display */
+        .stats {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 10px;
+            padding: 10px 0;
+            border-top: 1px dashed #ddd;
+            font-size: 0.9rem;
+        }
+
+        .stat-item {
+            text-align: center;
+        }
+
+        .stat-value {
+            font-weight: bold;
+            color: #2c3e50;
+            font-size: 1.2rem;
+        }
+
+        .stat-label {
+            color: #666;
+            font-size: 0.8rem;
+        }
+
+        /* Toggle panel button for mobile */
+        .panel-toggle {
+            display: none;
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background-color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 8px 12px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+            z-index: 1000;
+            cursor: pointer;
+        }
+
+        @media (max-width: 768px) {
+            .panel-toggle {
+                display: block;
+            }
+
+            .accordion-panel.collapsed {
+                transform: translateY(-100%);
+                height: 0;
+                overflow: hidden;
+            }
+        }
+
+        /* Legend */
+        .legend {
+            background-color: white;
+            padding: 10px;
+            border-radius: 5px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            margin-top: 10px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 8px;
+            font-size: 0.85rem;
+        }
+
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            margin-right: 8px;
+            border-radius: 3px;
+        }
+
+        /* Loading indicator */
+        .loading {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(255, 255, 255, 0.9);
+            padding: 20px 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            z-index: 1000;
+            text-align: center;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #2c6c91;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* Coordinates display */
+        .coordinates {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background-color: rgba(255, 255, 255, 0.9);
+            padding: 10px 15px;
+            border-radius: 5px;
+            font-size: 0.85rem;
+            z-index: 500;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Counter styles */
+        .counter {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background-color: rgba(255, 255, 255, 0.2);
+            color: white;
+            border-radius: 12px;
+            padding: 2px 10px;
+            font-size: 0.8rem;
+            margin-left: 8px;
+        }
+
+        .item-counter {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background-color: #4a90e2;
+            color: white;
+            border-radius: 10px;
+            padding: 1px 8px;
+            font-size: 0.75rem;
+            margin-left: 8px;
+        }
+
+        /* Data source status */
+        .data-source-status {
+            font-size: 0.8rem;
+            opacity: 0.8;
+            margin-top: 5px;
+        }
+
+        /* Layer controls */
+        .layer-controls {
+            margin-top: 15px;
+        }
+
+        .layer-toggle {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+            padding: 8px;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .layer-toggle input[type="checkbox"] {
+            margin-right: 10px;
+        }
+
+        .layer-toggle label {
+            margin-bottom: 0;
+            cursor: pointer;
+            flex: 1;
+        }
+
+        .layer-color {
+            width: 15px;
+            height: 15px;
+            border-radius: 3px;
+            margin-right: 10px;
+        }
+    </style>
+    <style>
+        /* Layer controls - Graphical Toggle */
+        .layer-controls {
+            margin-top: 15px;
+        }
+
+        .layer-toggle-switch {
+            display: flex;
+            align-items: center;
+            margin-bottom: 12px;
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: 2px solid transparent;
+        }
+
+        .layer-toggle-switch:hover {
+            background-color: #e9ecef;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .layer-toggle-switch.active {
+            background-color: rgba(44, 108, 145, 0.1);
+            border-color: #2c6c91;
+        }
+
+        .layer-color-indicator {
+            width: 24px;
+            height: 24px;
+            border-radius: 6px;
+            margin-right: 12px;
+            border: 2px solid #fff;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+            transition: all 0.3s ease;
+        }
+
+        .layer-toggle-switch.active .layer-color-indicator {
+            transform: scale(1.1);
+            box-shadow: 0 0 0 2px #2c6c91;
+        }
+
+        .layer-info {
+            flex: 1;
+        }
+
+        .layer-name {
+            font-weight: 600;
+            color: #2c3e50;
+            margin-bottom: 3px;
+            font-size: 0.95rem;
+        }
+
+        .layer-count {
+            font-size: 0.8rem;
+            color: #666;
+        }
+
+        .toggle-button {
+            width: 44px;
+            height: 24px;
+            background-color: #ccc;
+            border-radius: 12px;
+            position: relative;
+            transition: all 0.3s ease;
+            margin-left: 10px;
+        }
+
+        .toggle-button.active {
+            background-color: #2c6c91;
+        }
+
+        .toggle-knob {
+            width: 20px;
+            height: 20px;
+            background-color: white;
+            border-radius: 50%;
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        .toggle-button.active .toggle-knob {
+            left: 22px;
+            background-color: #f8f9fa;
+        }
+
+        .layer-status {
+            font-size: 0.75rem;
+            color: #27ae60;
+            font-weight: 600;
+            margin-top: 2px;
+        }
+
+        .layer-status.off {
+            color: #e74c3c;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="header">
+        <h1><i class="fas fa-map-marked-alt"></i> 香港政府公開數據地圖查詢系統</h1>
+        <p>整合多個香港政府部門的公開數據，提供統一查詢界面</p>
+    </div>
+
+    <div class="container">
+        <button class="panel-toggle" id="panelToggle" style="display:none">
+            <i class="fas fa-bars"></i> 控制面板
+        </button>
+
+        <div class="accordion-panel" id="accordionPanel">
+            <div class="accordion">
+                <!-- Data Sources List -->
+                <div class="data-source-item">
+                    <div class="data-source-header active" id="headerDataSources">
+                        <span><i class="fas fa-database"></i> 數據源列表</span>
+                        <i class="fas fa-chevron-down"></i>
+                    </div>
+                    <div class="data-source-content active" id="contentDataSources">
+                        <div class="search-box">
+                            <input type="text" id="globalSearchInput" class="search-input" placeholder="搜尋所有數據...">
+                        </div>
+
+                        <div class="info-box">
+                            <h4><i class="fas fa-info-circle"></i> 使用說明</h4>
+                            <p>1. 點擊數據源標題展開查看詳細數據</p>
+                            <p>2. 點擊項目查看詳細資訊並在地圖上定位</p>
+                            <p>3. 使用搜尋框快速查找特定項目</p>
+                            <p>4. 點擊地圖上的標記查看更多詳情</p>
+                        </div>
+
+                        <div class="layer-controls">
+                            <h4><i class="fas fa-layer-group"></i> 圖層控制</h4>
+                            <!-- Layer toggles will be added dynamically -->
+                        </div>
+
+                        <div id="dataSourcesList">
+                            <!-- Data sources will be loaded here -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Map Settings -->
+                <div class="data-source-item">
+                    <div class="data-source-header" id="headerSettings">
+                        <span><i class="fas fa-cog"></i> 地圖設定</span>
+                        <i class="fas fa-chevron-down"></i>
+                    </div>
+                    <div class="data-source-content" id="contentSettings">
+                        <div class="control-group">
+                            <label><i class="fas fa-map"></i> 底圖樣式</label>
+                            <select id="baseMapSelect" class="btn" style="padding: 10px;">
+                                <option value="OpenStreetMap">OpenStreetMap</option>
+                                <option value="地形圖">地形圖</option>
+                                <option value="衛星圖像">衛星圖像</option>
+                            </select>
+                        </div>
+
+                        <div class="control-group">
+                            <label><i class="fas fa-search"></i> 縮放級別</label>
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <button class="btn btn-small" id="zoomInBtn" style="flex: 1;">
+                                    <i class="fas fa-search-plus"></i> 放大
+                                </button>
+                                <button class="btn btn-small" id="zoomOutBtn" style="flex: 1;">
+                                    <i class="fas fa-search-minus"></i> 縮小
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="control-group">
+                            <label><i class="fas fa-location-arrow"></i> 重置視圖</label>
+                            <button class="btn" id="resetViewBtn">
+                                <i class="fas fa-globe-asia"></i> 重置至香港全境
+                            </button>
+                        </div>
+
+                        <div class="control-group">
+                            <label><i class="fas fa-sync-alt"></i> 重新載入數據</label>
+                            <button class="btn btn-success" id="reloadDataBtn">
+                                <i class="fas fa-redo"></i> 重新載入所有數據
+                            </button>
+                        </div>
+
+                        <div class="legend" id="dynamicLegend">
+                            <label><i class="fas fa-layer-group"></i> 圖例</label>
+                            <!-- Legend items will be added dynamically -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="map-container">
+            <div id="map"></div>
+            <div class="loading" id="loadingIndicator">
+                <div class="spinner"></div>
+                <p>正在載入數據...</p>
+            </div>
+            <div class="coordinates" id="coordinatesDisplay" hidden>
+                經度: --, 緯度: --
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="footer-content">
+            <div class="footer-copyright">
+                &copy; 2024 香港政府公開數據地圖查詢系統<br />數據來源：各相關政府部門
+            </div>
+        </div>
+    </footer>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <script>
+        window.isTerminated = false;
+
+        const PROXY_URL = "https://cors-anywhere.herokuapp.com";
+
+        // Data sources configuration
+        const DATA_SOURCES = [
+            {
+                id: 'hk-gov-opendata-app-public-piers',
+                displayName: '（土木工程拓展署）公眾碼頭',
+                format: 'geojson',
+                url: 'https://portal.csdi.gov.hk/server/services/common/cedd_rcd_1696844622988_9055/MapServer/WFSServer?service=wfs&request=GetFeature&typenames=PMIS_point&outputFormat=geojson',
+                color: '#FF6B6B',
+                grouping: {
+                    levels: ['STRUCTURE_'],
+                    sortBy: 'STRUCTURE_',
+                    countItems: true
+                },
+                eventHandlers: {
+                    onDataLoad: (data, container) => populatePiersList(data, container),
+                    onItemClick: (feature) => handlePiersItemClick(feature)
+                }
+            },
+            {
+                id: 'hk-gov-opendata-app-public-zoos-and-gardens',
+                displayName: '（康樂及文化事務署）公園及動植物公園',
+                format: 'geojson',
+                url: 'https://portal.csdi.gov.hk/server/services/common/lcsd_rcd_1629267205215_19292/MapServer/WFSServer?service=wfs&request=GetFeature&typenames=PARKS&outputFormat=geojson',
+                color: '#4ECDC4',
+                grouping: {
+                    levels: ['DATASET_TC', 'DistrictTC', 'NameTC'],
+                    searchFields: ['AddressEN', 'AddressTC', 'NameEN', 'NameTC'],
+                    detailFields: ['FacilityDetailsEN', 'FacilityDetailsTC', 'OpeningHoursEN', 'OpeningHoursTC', 'TelephoneEN', 'TelephoneTC', 'FaxNumberEN', 'FaxNumberTC', 'EmailAddressEN', 'EmailAddressTC', 'WebsiteEN', 'WebsiteTC'],
+                    countItems: true
+                },
+                eventHandlers: {
+                    onDataLoad: (data, container) => populateParksList(data, container),
+                    onItemClick: (feature) => handleParksItemClick(feature)
+                }
+            },
+            {
+                id: 'hk-gov-opendata-app-public-ipfp',
+                displayName: '（康樂及文化事務署）寵物共享公園',
+                format: 'geojson',
+                url: 'https://portal.csdi.gov.hk/server/services/common/lcsd_rcd_1670384557490_22821/MapServer/WFSServer?service=wfs&request=GetFeature&typenames=IPPET&outputFormat=geojson',
+                color: '#FFD166',
+                grouping: {
+                    levels: ['DATASET_TC', 'DistrictTC', 'NameTC'],
+                    searchFields: ['AddressEN', 'AddressTC', 'NameEN', 'NameTC'],
+                    detailFields: ['FacilityDetailsEN', 'FacilityDetailsTC', 'OpeningHoursEN', 'OpeningHoursTC', 'TelephoneEN', 'TelephoneTC', 'FaxNumberEN', 'FaxNumberTC', 'EmailAddressEN', 'EmailAddressTC', 'WebsiteEN', 'WebsiteTC'],
+                    countItems: true
+                },
+                eventHandlers: {
+                    onDataLoad: (data, container) => populatePetParksList(data, container),
+                    onItemClick: (feature) => handlePetParksItemClick(feature)
+                }
+            },
+            {
+                id: 'hk-gov-opendata-app-public-mcpa',
+                displayName: '（康樂及文化事務署）模型車場',
+                format: 'geojson',
+                url: 'https://portal.csdi.gov.hk/server/services/common/lcsd_rcd_1670384987039_79571/MapServer/WFSServer?service=wfs&request=GetFeature&typenames=geotagging&outputFormat=geojson',
+                color: '#06D6A0',
+                grouping: {
+                    levels: ['District_cn', 'Name_cn'],
+                    searchFields: ['Address_en', 'Address_cn', 'Name_en', 'Name_cn'],
+                    detailFields: ['Facilities_en', 'Facilities_b5', 'Ancillary_facilities_en', 'Ancillary_facilities_cn', 'Opening_hours_en', 'Opening_hours_cn', 'Phone'],
+                    countItems: true
+                },
+                eventHandlers: {
+                    onDataLoad: (data, container) => populateModelCarParksList(data, container),
+                    onItemClick: (feature) => handleModelCarParksItemClick(feature)
+                }
+            },
+            {
+                id: 'hk-gov-opendata-app-public-dgpg',
+                displayName: '（康樂及文化事務署）狗公園 / 寵物公園',
+                format: 'geojson',
+                url: 'https://portal.csdi.gov.hk/server/services/common/lcsd_rcd_1670384486075_71092/MapServer/WFSServer?service=wfs&request=GetFeature&typenames=PETG&outputFormat=geojson',
+                color: '#118AB2',
+                grouping: {
+                    levels: ['DATASET_TC', 'DistrictTC', 'NameTC'],
+                    searchFields: ['AddressEN', 'AddressTC', 'NameEN', 'NameTC'],
+                    detailFields: ['FacilityDetailsEN', 'FacilityDetailsTC', 'OpeningHoursEN', 'OpeningHoursTC', 'TelephoneEN', 'TelephoneTC', 'FaxNumberEN', 'FaxNumberTC', 'EmailAddressEN', 'EmailAddressTC', 'WebsiteEN', 'WebsiteTC'],
+                    countItems: true
+                },
+                eventHandlers: {
+                    onDataLoad: (data, container) => populateDogGardensList(data, container),
+                    onItemClick: (feature) => handleDogGardensItemClick(feature)
+                }
+            },
+            {
+                id: 'hk-gov-opendata-app-public-libraries',
+                displayName: '（康樂及文化事務署）圖書館',
+                format: 'geojson',
+                url: 'https://portal.csdi.gov.hk/server/services/common/lcsd_rcd_1629267205214_44807/MapServer/WFSServer?service=wfs&request=GetFeature&typenames=LIBRARY&outputFormat=geojson',
+                color: '#EF476F',
+                grouping: {
+                    levels: ['DATASET_TC', 'LibraryTypeTC', 'DistrictTC', 'NameTC'],
+                    searchFields: ['AddressEN', 'AddressTC', 'NameEN', 'NameTC'],
+                    detailFields: ['OpeningHoursEN', 'OpeningHoursTC', 'TelephoneEN', 'TelephoneTC', 'FaxNumberEN', 'FaxNumberTC', 'EmailAddressEN', 'EmailAddressTC', 'WebsiteEN', 'WebsiteTC'],
+                    countItems: true
+                },
+                eventHandlers: {
+                    onDataLoad: (data, container) => populateLibrariesList(data, container),
+                    onItemClick: (feature) => handleLibrariesItemClick(feature)
+                }
+            },
+            {
+                id: 'hk-gov-opendata-app-public-heat-shelters',
+                displayName: '（民政事務總署）臨時避暑中心',
+                format: 'geojson',
+                url: 'https://portal.csdi.gov.hk/server/services/common/had_rcd_1634542411218_91745/MapServer/WFSServer?service=wfs&request=GetFeature&typenames=HADTHS&outputFormat=geojson',
+                color: '#7B68EE',
+                grouping: {
+                    levels: ['數據集', '地區', '名稱'],
+                    searchFields: ['Address', '地址', 'Name', '名稱']
+                },
+                eventHandlers: {
+                    onDataLoad: (data, container) => populateHeatSheltersList(data, container),
+                    onItemClick: (feature) => handleHeatSheltersItemClick(feature)
+                }
+            },
+            {
+                id: 'hk-gov-opendata-app-public-list-of-cc',
+                displayName: '（社會福利署）社區中心名單',
+                format: 'csv',
+                url: 'https://www.swd.gov.hk/datagovhk/ycb/list-of-cc.csv',
+                color: '#FFA500',
+                grouping: {
+                    levels: ['機構 / 中心名稱', '地址'],
+                    searchFields: ['Name of Agency / Centre', 'Address', '機構 / 中心名稱', '地址']
+                },
+                eventHandlers: {
+                    onDataLoad: (data, container) => populateCommunityCentersList(data, container),
+                    onItemClick: null // No map interaction for CSV data
+                }
+            },
+            {
+                id: 'hk-gov-opendata-app-public-holiday-camps',
+                displayName: '（康樂及文化事務署）度假營',
+                format: 'geojson',
+                url: 'https://www.lcsd.gov.hk/datagovhk/facility/facility-hc.json',
+                color: '#9B59B6',
+                grouping: {
+                    levels: ['DATASET_TC', 'SEARCH01_TC', 'NAME_TC'],
+                    searchFields: ['ADDRESS_EN', 'ADDRESS_TC', 'NAME_EN', 'NAME_TC'],
+                    detailFields: ['ADDRESS_EN', 'ADDRESS_TC', 'NSEARCH02_EN', 'NSEARCH02_TC', 'NSEARCH03_EN', 'NSEARCH03_TC', 'NSEARCH04_EN', 'NSEARCH04_TC', 'NSEARCH05_EN', 'NSEARCH05_TC'],
+                    countItems: true
+                },
+                eventHandlers: {
+                    onDataLoad: (data, container) => populateHolidayCampsList(data, container),
+                    onItemClick: (feature) => handleHolidayCampsItemClick(feature)
+                }
+            }
+        ];
+
+        // Initialize variables
+        let map;
+        let markers = {};
+        let layers = {};
+        let dataCache = {};
+        let selectedFeature = null;
+        let currentPopup = null;
+
+        // Add base layers
+        const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> contributors'
+        });
+
+        const topoLayer = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+            attribution: 'Map data: &copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> contributors, <a href="http://viewfinderpanoramas.org">SRTM</a> | Map style: &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (<a href="https://creativecommons.org/licenses/by-sa/3.0/">CC-BY-SA</a>)'
+        });
+
+        const satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
+        });
+
+        // Base layers object
+        const baseLayers = {
+            "OpenStreetMap": osmLayer,
+            "地形圖": topoLayer,
+            "衛星圖像": satelliteLayer
+        };
+        let currentTileLayer = baseLayers["OpenStreetMap"];
+
+        // Initialize map when DOM is loaded
+        document.addEventListener('DOMContentLoaded', async function () {
+            initMap();
+            setupAccordion();
+            await setupEventListeners();
+            await loadAllDataSources();
+            setupLayerControls();
+
+            // Handle mobile panel toggle
+            const panelToggle = document.getElementById('panelToggle');
+            const accordionPanel = document.getElementById('accordionPanel');
+
+            panelToggle.addEventListener('click', function () {
+                accordionPanel.classList.toggle('collapsed');
+                panelToggle.innerHTML = accordionPanel.classList.contains('collapsed')
+                    ? '<i class="fas fa-bars"></i> 顯示控制面板'
+                    : '<i class="fas fa-bars"></i> 隱藏控制面板';
+            });
+        });
+
+        // Initialize the map
+        function initMap() {
+            map = L.map('map', { zoomControl: false }).setView([22.3193, 114.1694], 11);
+            currentTileLayer.addTo(map);
+
+            // Add coordinates display
+            map.on('mousemove', function (e) {
+                document.getElementById('coordinatesDisplay').innerHTML =
+                    `經度: ${e.latlng.lng.toFixed(6)}, 緯度: ${e.latlng.lat.toFixed(6)}`;
+            });
+        }
+
+        // Setup accordion functionality
+        function setupAccordion() {
+            const dataSourceHeaders = document.querySelectorAll('.data-source-header');
+
+            dataSourceHeaders.forEach(header => {
+                header.addEventListener('click', function () {
+                    const content = this.nextElementSibling;
+                    const isActive = this.classList.contains('active');
+
+                    // Toggle current item
+                    this.classList.toggle('active');
+                    content.classList.toggle('active');
+
+                    // Rotate icon
+                    const icon = this.querySelector('.fa-chevron-down');
+                    icon.style.transform = isActive ? 'rotate(0deg)' : 'rotate(180deg)';
+
+                    map.invalidateSize();
+                });
+            });
+        }
+
+        // Setup event listeners
+        function setupEventListeners() {
+            // Map controls
+            document.getElementById('zoomInBtn').addEventListener('click', function () {
+                map.zoomIn();
+            });
+
+            document.getElementById('zoomOutBtn').addEventListener('click', function () {
+                map.zoomOut();
+            });
+
+            document.getElementById('resetViewBtn').addEventListener('click', function () {
+                map.setView([22.3193, 114.1694], 11);
+            });
+
+            document.getElementById('reloadDataBtn').addEventListener('click', function () {
+                loadAllDataSources();
+            });
+
+            // Base map selector
+            document.getElementById('baseMapSelect').addEventListener('change', function (e) {
+                map.removeLayer(currentTileLayer);
+                currentTileLayer = baseLayers[e.target.value];
+                currentTileLayer.addTo(map);
+            });
+
+            // Global search
+            document.getElementById('globalSearchInput').addEventListener('input', function (e) {
+                filterAllDataSources(e.target.value);
+            });
+        }
+
+        // Setup layer controls with graphical toggle switches
+        function setupLayerControls() {
+            const container = document.querySelector('.layer-controls');
+
+            DATA_SOURCES.forEach(source => {
+                // Only create toggle for GeoJSON sources that have map layers
+                if (source.format !== 'geojson') return;
+
+                const toggleSwitch = document.createElement('div');
+                toggleSwitch.className = 'layer-toggle-switch active';
+                toggleSwitch.dataset.sourceId = source.id;
+
+                // Get item count for display
+                const data = dataCache[source.id];
+                const itemCount = data && data.features ? data.features.length : 0;
+
+                toggleSwitch.innerHTML = `
+                    <div class="layer-color-indicator" style="background-color: ${source.color};"></div>
+                    <div class="layer-info">
+                        <div class="layer-name">${source.displayName}</div>
+                        <div class="layer-count">${itemCount} 個項目</div>
+                        <div class="layer-status">已顯示</div>
+                    </div>
+                    <div class="toggle-button active">
+                        <div class="toggle-knob"></div>
+                    </div>
+                `;
+
+                container.appendChild(toggleSwitch);
+
+                // Add click event
+                toggleSwitch.addEventListener('click', function (e) {
+                    // Don't toggle if clicking on the toggle button itself (handled separately)
+                    if (e.target.closest('.toggle-button')) return;
+
+                    const isActive = this.classList.contains('active');
+                    toggleLayer(source.id, !isActive);
+                });
+                toggleSwitch.click(); // Initialize as active
+
+                // Add click event for toggle button specifically
+                const toggleButton = toggleSwitch.querySelector('.toggle-button');
+                toggleButton.addEventListener('click', function (e) {
+                    e.stopPropagation(); // Prevent parent click event
+                    const toggleSwitch = this.closest('.layer-toggle-switch');
+                    const isActive = toggleSwitch.classList.contains('active');
+                    toggleLayer(source.id, !isActive);
+                });
+            });
+        }
+
+        function toggleLayer(sourceId, show) {
+            const source = DATA_SOURCES.find(s => s.id === sourceId);
+            if (!source) return;
+
+            const toggleSwitch = document.querySelector(`.layer-toggle-switch[data-source-id="${sourceId}"]`);
+            const toggleButton = toggleSwitch?.querySelector('.toggle-button');
+            const statusText = toggleSwitch?.querySelector('.layer-status');
+
+            if (layers[sourceId]) {
+                if (show) {
+                    map.addLayer(layers[sourceId]);
+                    toggleSwitch?.classList.add('active');
+                    toggleButton?.classList.add('active');
+                    if (statusText) {
+                        statusText.textContent = '已顯示';
+                        statusText.classList.remove('off');
+                    }
+                } else {
+                    map.removeLayer(layers[sourceId]);
+                    toggleSwitch?.classList.remove('active');
+                    toggleButton?.classList.remove('active');
+                    if (statusText) {
+                        statusText.textContent = '已隱藏';
+                        statusText.classList.add('off');
+                    }
+                }
+            }
+        }
+
+        // Load all data sources
+        async function loadAllDataSources() {
+            const loadingIndicator = document.getElementById('loadingIndicator');
+            loadingIndicator.style.display = 'block';
+
+            try {
+                // Clear existing data
+                dataCache = {};
+                markers = {};
+                for (const id in layers) {
+                    if (layers[id]) {
+                        map.removeLayer(layers[id]);
+                    }
+                }
+                layers = {};
+
+                // Clear UI
+                document.getElementById('dataSourcesList').innerHTML = '';
+
+                // // Load each data source
+                // for (const source of DATA_SOURCES) {
+                //     await loadDataSource(source);
+                // }
+
+                // Load each data source
+                const promises = DATA_SOURCES.map(source => loadDataSource(source));
+                await Promise.all(promises);
+
+                updateLegend();
+                showNotification('所有數據已成功載入');
+
+            } catch (error) {
+                console.error('Error loading data sources:', error);
+                showNotification('載入數據時發生錯誤', 'error');
+            } finally {
+                loadingIndicator.style.display = 'none';
+            }
+        }
+
+        // Load individual data source
+        async function loadDataSource(source) {
+            try {
+                let data;
+
+                if (isTerminated) return;
+
+                if (source.format === 'geojson') {
+                    const response = await fetch(`${PROXY_URL}/${source.url}`);
+                    if (!response.ok) {
+                        document.querySelector('body').style.display = 'none';
+                        alert(`無法載入 ${source.displayName}，請啟用 PROXY: ${PROXY_URL}。`);
+                        window.open(`${PROXY_URL}/corsdemo`, '_blank');
+                        window.isTerminated = true;
+                        return;
+                    };
+                    data = await response.json();
+                } else if (source.format === 'csv') {
+                    const response = await fetch(`${PROXY_URL}/${source.url}`);
+                    if (!response.ok) {
+                        document.querySelector('body').style.display = 'none';
+                        alert(`無法載入 ${source.displayName}，請啟用 PROXY: ${PROXY_URL}。`);
+                        window.open(`${PROXY_URL}/corsdemo`, '_blank');
+                        window.isTerminated = true;
+                        return;
+                    };
+                    const csvText = await response.text();
+                    data = Papa.parse(csvText, {
+                        header: true,
+                        skipEmptyLines: true
+                    });
+                }
+
+                dataCache[source.id] = data;
+
+                // Create UI
+                createDataSourceUI(source, data);
+
+                // Create map layer if it's GeoJSON with geometry
+                if (source.format === 'geojson' && data.features && data.features.length > 0) {
+                    createMapLayer(source, data);
+                }
+
+            } catch (error) {
+                console.error(`Error loading ${source.displayName}:`, error);
+                showNotification(`載入 ${source.displayName} 時發生錯誤`, 'error');
+            }
+        }
+
+        // Create UI for data source
+        function createDataSourceUI(source, data) {
+            const container = document.getElementById('dataSourcesList');
+
+            const dataSourceItem = document.createElement('div');
+            dataSourceItem.className = 'data-source-item';
+            dataSourceItem.id = `source-${source.id}`;
+
+            const itemCount = source.format === 'geojson'
+                ? (data.features ? data.features.length : 0)
+                : (data.data ? data.data.length : 0);
+
+            dataSourceItem.innerHTML = `
+                <div class="data-source-header">
+                    <span>
+                        ${source.displayName}
+                        <span class="counter">${itemCount}</span>
+                    </span>
+                    <i class="fas fa-chevron-down"></i>
+                </div>
+                <div class="data-source-content">
+                    <div class="search-box">
+                        <input type="text" class="search-input source-search" 
+                               data-source="${source.id}" 
+                               placeholder="搜尋${source.displayName}...">
+                    </div>
+                    <div class="data-source-status">
+                        <i class="fas fa-check-circle" style="color: #27ae60;"></i>
+                        已載入 ${itemCount} 個項目
+                    </div>
+                    <div id="content-${source.id}">
+                        <!-- Data will be populated here -->
+                    </div>
+                </div>
+            `;
+
+            container.appendChild(dataSourceItem);
+
+            // Add accordion functionality
+            const header = dataSourceItem.querySelector('.data-source-header');
+            const content = dataSourceItem.querySelector('.data-source-content');
+
+            header.addEventListener('click', function () {
+                const isActive = this.classList.contains('active');
+                this.classList.toggle('active');
+                content.classList.toggle('active');
+
+                const icon = this.querySelector('.fa-chevron-down');
+                icon.style.transform = isActive ? 'rotate(0deg)' : 'rotate(180deg)';
+            });
+
+            // Add search functionality
+            const searchInput = dataSourceItem.querySelector('.source-search');
+            searchInput.addEventListener('input', function (e) {
+                filterDataSource(source.id, e.target.value);
+            });
+
+            // Populate data
+            if (source.eventHandlers.onDataLoad) {
+                source.eventHandlers.onDataLoad(data, document.getElementById(`content-${source.id}`));
+            }
+        }
+
+        // Create map layer for GeoJSON data
+        function createMapLayer(source, data) {
+            const layer = L.layerGroup();
+
+            data.features.forEach(feature => {
+                if (feature.geometry && feature.geometry.type === 'Point') {
+                    const coords = feature.geometry.coordinates;
+                    const marker = L.circleMarker([coords[1], coords[0]], {
+                        radius: 8,
+                        fillColor: source.color,
+                        color: '#333',
+                        weight: 1,
+                        opacity: 1,
+                        fillOpacity: 0.8
+                    });
+
+                    marker.feature = feature;
+                    marker.sourceId = source.id;
+
+                    marker.on('click', function () {
+                        if (source.eventHandlers.onItemClick) {
+                            source.eventHandlers.onItemClick(feature);
+                        }
+                    });
+
+                    layer.addLayer(marker);
+
+                    // Store marker reference
+                    if (!markers[source.id]) {
+                        markers[source.id] = [];
+                    }
+                    markers[source.id].push(marker);
+                }
+            });
+
+            layers[source.id] = layer;
+            map.addLayer(layer);
+        }
+
+        // Update legend
+        function updateLegend() {
+            const legend = document.getElementById('dynamicLegend');
+            legend.innerHTML = '<label><i class="fas fa-layer-group"></i> 圖例</label>';
+
+            DATA_SOURCES.forEach(source => {
+                if (source.format === 'geojson') {
+                    const item = document.createElement('div');
+                    item.className = 'legend-item';
+                    item.innerHTML = `
+                        <div class="legend-color" style="background-color: ${source.color};"></div>
+                        <span>${source.displayName}</span>
+                    `;
+                    legend.appendChild(item);
+                }
+            });
+        }
+
+        // Filter all data sources
+        function filterAllDataSources(searchTerm) {
+            DATA_SOURCES.forEach(source => {
+                filterDataSource(source.id, searchTerm);
+            });
+        }
+
+        // Filter individual data source
+        function filterDataSource(sourceId, searchTerm) {
+            const source = DATA_SOURCES.find(s => s.id === sourceId);
+            const searchLower = searchTerm.toLowerCase().trim();
+
+            if (!searchLower) {
+                // Show all items
+                document.querySelectorAll(`#content-${sourceId} .data-item`).forEach(item => {
+                    item.style.display = 'block';
+                });
+                document.querySelectorAll(`#content-${sourceId} .data-group-accordion`).forEach(group => {
+                    group.style.display = 'block';
+                });
+                return;
+            }
+
+            // Filter items
+            const items = document.querySelectorAll(`#content-${sourceId} .data-item`);
+            items.forEach(item => {
+                const text = item.textContent.toLowerCase();
+                if (text.includes(searchLower)) {
+                    item.style.display = 'block';
+
+                    // Show parent groups
+                    let parent = item.closest('.data-group-content');
+                    while (parent) {
+                        parent.style.display = 'block';
+                        const header = parent.previousElementSibling;
+                        if (header && header.classList.contains('data-group-header')) {
+                            header.classList.add('active');
+                            parent.classList.add('active');
+                        }
+                        parent = parent.parentElement.closest('.data-group-content');
+                    }
+                } else {
+                    item.style.display = 'none';
+                }
+            });
+
+            // Hide empty groups
+            document.querySelectorAll(`#content-${sourceId} .data-group-accordion`).forEach(group => {
+                const visibleItems = group.querySelectorAll('.data-item[style="display: block"]');
+                group.style.display = visibleItems.length > 0 ? 'block' : 'none';
+            });
+        }
+
+        // Show notification
+        function showNotification(message, type = 'success') {
+            const notification = document.createElement('div');
+            notification.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background-color: ${type === 'error' ? '#e74c3c' : '#2c6c91'};
+                color: white;
+                padding: 15px 20px;
+                border-radius: 5px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+                z-index: 10000;
+                font-weight: 500;
+                max-width: 300px;
+                animation: fadeInOut 3s ease-in-out;
+            `;
+
+            const style = document.createElement('style');
+            style.textContent = `
+                @keyframes fadeInOut {
+                    0% { opacity: 0; transform: translateY(-10px); }
+                    10% { opacity: 1; transform: translateY(0); }
+                    90% { opacity: 1; transform: translateY(0); }
+                    100% { opacity: 0; transform: translateY(-10px); }
+                }
+            `;
+            document.head.appendChild(style);
+
+            notification.textContent = message;
+            document.body.appendChild(notification);
+
+            setTimeout(() => {
+                notification.remove();
+                style.remove();
+            }, 3000);
+        }
+
+        // ==================== Data population functions ====================
+
+        // 1. Piers data
+        function populatePiersList(data, container) {
+            if (!data.features || data.features.length === 0) {
+                container.innerHTML = '<p>沒有數據</p>';
+                return;
+            }
+
+            // Group by STRUCTURE_
+            const grouped = {};
+            data.features.forEach(feature => {
+                const structure = feature.properties.STRUCTURE_ || '未分類';
+                if (!grouped[structure]) grouped[structure] = [];
+                grouped[structure].push(feature);
+            });
+
+            // Sort groups
+            const sortedGroups = Object.keys(grouped).sort();
+
+            sortedGroups.forEach(structure => {
+                const features = grouped[structure];
+                const groupAccordion = createGroupAccordion(
+                    structure,
+                    features.length,
+                    `group-${structure}`
+                );
+
+                const content = groupAccordion.querySelector('.data-group-content');
+                features.forEach(feature => {
+                    const item = createPiersItem(feature);
+                    item.addEventListener('click', () => {
+                        handlePiersItemClick(feature);
+                    });
+                    content.appendChild(item);
+                });
+
+                container.appendChild(groupAccordion);
+            });
+        }
+
+        function createPiersItem(feature) {
+            const props = feature.properties;
+            const item = document.createElement('div');
+            item.className = 'data-item';
+            item.dataset.gmlId = props.GmlID;
+
+            item.innerHTML = `
+                <div class="data-item-name">${props.STRUCTURE_ || '未命名'}</div>
+                <div class="data-item-details">
+                    <div class="data-detail-item">
+                        <i class="fas fa-hashtag"></i>
+                        <span>OBJECTID: ${props.OBJECTID || '未提供'}</span>
+                    </div>
+                </div>
+            `;
+
+            return item;
+        }
+
+        // 2. Parks data
+        function populateParksList(data, container) {
+            if (!data.features || data.features.length === 0) {
+                container.innerHTML = '<p>沒有數據</p>';
+                return;
+            }
+
+            // Multi-level grouping
+            const grouped = {};
+            data.features.forEach(feature => {
+                const dataset = feature.properties.DATASET_TC || '未分類';
+                const district = feature.properties.DistrictTC || '未分類';
+                const name = feature.properties.NameTC || '未分類';
+
+                if (!grouped[dataset]) grouped[dataset] = {};
+                if (!grouped[dataset][district]) grouped[dataset][district] = {};
+                if (!grouped[dataset][district][name]) grouped[dataset][district][name] = [];
+
+                grouped[dataset][district][name].push(feature);
+            });
+
+            // Create nested accordions
+            Object.keys(grouped).sort().forEach(dataset => {
+                const datasetAccordion = createGroupAccordion(
+                    dataset,
+                    countFeatures(grouped[dataset]),
+                    `dataset-${dataset}`
+                );
+
+                const datasetContent = datasetAccordion.querySelector('.data-group-content');
+
+                Object.keys(grouped[dataset]).sort().forEach(district => {
+                    const districtAccordion = createGroupAccordion(
+                        district,
+                        countFeatures(grouped[dataset][district]),
+                        `district-${district}`
+                    );
+
+                    const districtContent = districtAccordion.querySelector('.data-group-content');
+
+                    Object.keys(grouped[dataset][district]).sort().forEach(name => {
+                        const nameAccordion = createGroupAccordion(
+                            name,
+                            grouped[dataset][district][name].length,
+                            `name-${name}`
+                        );
+
+                        const nameContent = nameAccordion.querySelector('.data-group-content');
+
+                        grouped[dataset][district][name].forEach(feature => {
+                            const item = createParkItem(feature);
+                            item.addEventListener('click', () => {
+                                handleParksItemClick(feature);
+                            });
+                            nameContent.appendChild(item);
+                        });
+
+                        districtContent.appendChild(nameAccordion);
+                    });
+
+                    datasetContent.appendChild(districtAccordion);
+                });
+
+                container.appendChild(datasetAccordion);
+            });
+        }
+
+        function createParkItem(feature) {
+            const props = feature.properties;
+            const item = document.createElement('div');
+            item.className = 'data-item';
+            item.dataset.gmlId = props.GmlID;
+
+            item.innerHTML = `
+                <div class="data-item-name">${props.NameTC || props.NameEN || '未命名'}</div>
+                <div class="data-item-details">
+                    <div class="data-detail-item">
+                        <i class="fas fa-map-marker-alt"></i>
+                        <span>${props.AddressTC || props.AddressEN || '地址未提供'}</span>
+                    </div>
+                    <div class="data-detail-item">
+                        <i class="fas fa-phone"></i>
+                        <span>${props.TelephoneTC || props.TelephoneEN || '電話未提供'}</span>
+                    </div>
+                </div>
+            `;
+
+            return item;
+        }
+
+        // 3. Pet Parks (Inclusive Park for Pets)
+        function populatePetParksList(data, container) {
+            if (!data.features || data.features.length === 0) {
+                container.innerHTML = '<p>沒有數據</p>';
+                return;
+            }
+
+            // Multi-level grouping
+            const grouped = {};
+            data.features.forEach(feature => {
+                const dataset = feature.properties.DATASET_TC || '未分類';
+                const district = feature.properties.DistrictTC || '未分類';
+                const name = feature.properties.NameTC || '未分類';
+
+                if (!grouped[dataset]) grouped[dataset] = {};
+                if (!grouped[dataset][district]) grouped[dataset][district] = {};
+                if (!grouped[dataset][district][name]) grouped[dataset][district][name] = [];
+
+                grouped[dataset][district][name].push(feature);
+            });
+
+            // Create nested accordions
+            Object.keys(grouped).sort().forEach(dataset => {
+                const datasetAccordion = createGroupAccordion(
+                    dataset,
+                    countFeatures(grouped[dataset]),
+                    `dataset-${dataset}`
+                );
+
+                const datasetContent = datasetAccordion.querySelector('.data-group-content');
+
+                Object.keys(grouped[dataset]).sort().forEach(district => {
+                    const districtAccordion = createGroupAccordion(
+                        district,
+                        countFeatures(grouped[dataset][district]),
+                        `district-${district}`
+                    );
+
+                    const districtContent = districtAccordion.querySelector('.data-group-content');
+
+                    Object.keys(grouped[dataset][district]).sort().forEach(name => {
+                        const nameAccordion = createGroupAccordion(
+                            name,
+                            grouped[dataset][district][name].length,
+                            `name-${name}`
+                        );
+
+                        const nameContent = nameAccordion.querySelector('.data-group-content');
+
+                        grouped[dataset][district][name].forEach(feature => {
+                            const item = createPetParkItem(feature);
+                            item.addEventListener('click', () => {
+                                handlePetParksItemClick(feature);
+                            });
+                            nameContent.appendChild(item);
+                        });
+
+                        districtContent.appendChild(nameAccordion);
+                    });
+
+                    datasetContent.appendChild(districtAccordion);
+                });
+
+                container.appendChild(datasetAccordion);
+            });
+        }
+
+        function createPetParkItem(feature) {
+            const props = feature.properties;
+            const item = document.createElement('div');
+            item.className = 'data-item';
+            item.dataset.gmlId = props.GmlID;
+
+            item.innerHTML = `
+                <div class="data-item-name">${props.NameTC || props.NameEN || '未命名'}</div>
+                <div class="data-item-details">
+                    <div class="data-detail-item">
+                        <i class="fas fa-map-marker-alt"></i>
+                        <span>${props.AddressTC || props.AddressEN || '地址未提供'}</span>
+                    </div>
+                    <div class="data-detail-item">
+                        <i class="fas fa-clock"></i>
+                        <span>${props.OpeningHoursTC || props.OpeningHoursEN || '開放時間未提供'}</span>
+                    </div>
+                </div>
+            `;
+
+            return item;
+        }
+
+        // 4. Model Car Parks
+        function populateModelCarParksList(data, container) {
+            if (!data.features || data.features.length === 0) {
+                container.innerHTML = '<p>沒有數據</p>';
+                return;
+            }
+
+            // Group by District_cn -> Name_cn
+            const grouped = {};
+            data.features.forEach(feature => {
+                const district = feature.properties.District_cn || '未分類';
+                const name = feature.properties.Name_cn || '未分類';
+
+                if (!grouped[district]) grouped[district] = {};
+                if (!grouped[district][name]) grouped[district][name] = [];
+                grouped[district][name].push(feature);
+            });
+
+            // Create nested accordions
+            Object.keys(grouped).sort().forEach(district => {
+                const districtAccordion = createGroupAccordion(
+                    district,
+                    countFeatures(grouped[district]),
+                    `district-${district}`
+                );
+
+                const districtContent = districtAccordion.querySelector('.data-group-content');
+
+                Object.keys(grouped[district]).sort().forEach(name => {
+                    const nameAccordion = createGroupAccordion(
+                        name,
+                        grouped[district][name].length,
+                        `name-${name}`
+                    );
+
+                    const nameContent = nameAccordion.querySelector('.data-group-content');
+
+                    grouped[district][name].forEach(feature => {
+                        const item = createModelCarParkItem(feature);
+                        item.addEventListener('click', () => {
+                            handleModelCarParksItemClick(feature);
+                        });
+                        nameContent.appendChild(item);
+                    });
+
+                    districtContent.appendChild(nameAccordion);
+                });
+
+                container.appendChild(districtAccordion);
+            });
+        }
+
+        function createModelCarParkItem(feature) {
+            const props = feature.properties;
+            const item = document.createElement('div');
+            item.className = 'data-item';
+            item.dataset.gmlId = props.GmlID;
+
+            item.innerHTML = `
+                <div class="data-item-name">${props.Name_cn || props.Name_en || '未命名'}</div>
+                <div class="data-item-details">
+                    <div class="data-detail-item">
+                        <i class="fas fa-map-marker-alt"></i>
+                        <span>${props.Address_cn || props.Address_en || '地址未提供'}</span>
+                    </div>
+                    <div class="data-detail-item">
+                        <i class="fas fa-phone"></i>
+                        <span>${props.Phone || '電話未提供'}</span>
+                    </div>
+                </div>
+            `;
+
+            return item;
+        }
+
+        // 5. Dog Gardens/Pet Gardens
+        function populateDogGardensList(data, container) {
+            if (!data.features || data.features.length === 0) {
+                container.innerHTML = '<p>沒有數據</p>';
+                return;
+            }
+
+            // Multi-level grouping
+            const grouped = {};
+            data.features.forEach(feature => {
+                const dataset = feature.properties.DATASET_TC || '未分類';
+                const district = feature.properties.DistrictTC || '未分類';
+                const name = feature.properties.NameTC || '未分類';
+
+                if (!grouped[dataset]) grouped[dataset] = {};
+                if (!grouped[dataset][district]) grouped[dataset][district] = {};
+                if (!grouped[dataset][district][name]) grouped[dataset][district][name] = [];
+
+                grouped[dataset][district][name].push(feature);
+            });
+
+            // Create nested accordions
+            Object.keys(grouped).sort().forEach(dataset => {
+                const datasetAccordion = createGroupAccordion(
+                    dataset,
+                    countFeatures(grouped[dataset]),
+                    `dataset-${dataset}`
+                );
+
+                const datasetContent = datasetAccordion.querySelector('.data-group-content');
+
+                Object.keys(grouped[dataset]).sort().forEach(district => {
+                    const districtAccordion = createGroupAccordion(
+                        district,
+                        countFeatures(grouped[dataset][district]),
+                        `district-${district}`
+                    );
+
+                    const districtContent = districtAccordion.querySelector('.data-group-content');
+
+                    Object.keys(grouped[dataset][district]).sort().forEach(name => {
+                        const nameAccordion = createGroupAccordion(
+                            name,
+                            grouped[dataset][district][name].length,
+                            `name-${name}`
+                        );
+
+                        const nameContent = nameAccordion.querySelector('.data-group-content');
+
+                        grouped[dataset][district][name].forEach(feature => {
+                            const item = createDogGardenItem(feature);
+                            item.addEventListener('click', () => {
+                                handleDogGardensItemClick(feature);
+                            });
+                            nameContent.appendChild(item);
+                        });
+
+                        districtContent.appendChild(nameAccordion);
+                    });
+
+                    datasetContent.appendChild(districtAccordion);
+                });
+
+                container.appendChild(datasetAccordion);
+            });
+        }
+
+        function createDogGardenItem(feature) {
+            const props = feature.properties;
+            const item = document.createElement('div');
+            item.className = 'data-item';
+            item.dataset.gmlId = props.GmlID;
+
+            item.innerHTML = `
+                <div class="data-item-name">${props.NameTC || props.NameEN || '未命名'}</div>
+                <div class="data-item-details">
+                    <div class="data-detail-item">
+                        <i class="fas fa-map-marker-alt"></i>
+                        <span>${props.AddressTC || props.AddressEN || '地址未提供'}</span>
+                    </div>
+                    <div class="data-detail-item">
+                        <i class="fas fa-clock"></i>
+                        <span>${props.OpeningHoursTC || props.OpeningHoursEN || '開放時間未提供'}</span>
+                    </div>
+                </div>
+            `;
+
+            return item;
+        }
+
+        // 6. Libraries
+        function populateLibrariesList(data, container) {
+            if (!data.features || data.features.length === 0) {
+                container.innerHTML = '<p>沒有數據</p>';
+                return;
+            }
+
+            // Multi-level grouping
+            const grouped = {};
+            data.features.forEach(feature => {
+                const dataset = feature.properties.DATASET_TC || '未分類';
+                const libraryType = feature.properties.LibraryTypeTC || '未分類';
+                const district = feature.properties.DistrictTC || '未分類';
+                const name = feature.properties.NameTC || '未分類';
+
+                if (!grouped[dataset]) grouped[dataset] = {};
+                if (!grouped[dataset][libraryType]) grouped[dataset][libraryType] = {};
+                if (!grouped[dataset][libraryType][district]) grouped[dataset][libraryType][district] = {};
+                if (!grouped[dataset][libraryType][district][name]) grouped[dataset][libraryType][district][name] = [];
+
+                grouped[dataset][libraryType][district][name].push(feature);
+            });
+
+            // Create nested accordions
+            Object.keys(grouped).sort().forEach(dataset => {
+                const datasetAccordion = createGroupAccordion(
+                    dataset,
+                    countFeatures(grouped[dataset]),
+                    `dataset-${dataset}`
+                );
+
+                const datasetContent = datasetAccordion.querySelector('.data-group-content');
+
+                Object.keys(grouped[dataset]).sort().forEach(libraryType => {
+                    const typeAccordion = createGroupAccordion(
+                        libraryType,
+                        countFeatures(grouped[dataset][libraryType]),
+                        `type-${libraryType}`
+                    );
+
+                    const typeContent = typeAccordion.querySelector('.data-group-content');
+
+                    Object.keys(grouped[dataset][libraryType]).sort().forEach(district => {
+                        const districtAccordion = createGroupAccordion(
+                            district,
+                            countFeatures(grouped[dataset][libraryType][district]),
+                            `district-${district}`
+                        );
+
+                        const districtContent = districtAccordion.querySelector('.data-group-content');
+
+                        Object.keys(grouped[dataset][libraryType][district]).sort().forEach(name => {
+                            const nameAccordion = createGroupAccordion(
+                                name,
+                                grouped[dataset][libraryType][district][name].length,
+                                `name-${name}`
+                            );
+
+                            const nameContent = nameAccordion.querySelector('.data-group-content');
+
+                            grouped[dataset][libraryType][district][name].forEach(feature => {
+                                const item = createLibraryItem(feature);
+                                item.addEventListener('click', () => {
+                                    handleLibrariesItemClick(feature);
+                                });
+                                nameContent.appendChild(item);
+                            });
+
+                            districtContent.appendChild(nameAccordion);
+                        });
+
+                        typeContent.appendChild(districtAccordion);
+                    });
+
+                    datasetContent.appendChild(typeAccordion);
+                });
+
+                container.appendChild(datasetAccordion);
+            });
+        }
+
+        function createLibraryItem(feature) {
+            const props = feature.properties;
+            const item = document.createElement('div');
+            item.className = 'data-item';
+            item.dataset.gmlId = props.GmlID;
+
+            item.innerHTML = `
+                <div class="data-item-name">${props.NameTC || props.NameEN || '未命名'}</div>
+                <div class="data-item-details">
+                    <div class="data-detail-item">
+                        <i class="fas fa-map-marker-alt"></i>
+                        <span>${props.AddressTC || props.AddressEN || '地址未提供'}</span>
+                    </div>
+                    <div class="data-detail-item">
+                        <i class="fas fa-book"></i>
+                        <span>${props.LibraryTypeTC || props.LibraryTypeEN || '類型未提供'}</span>
+                    </div>
+                </div>
+            `;
+
+            return item;
+        }
+
+        // 7. Heat Shelters
+        function populateHeatSheltersList(data, container) {
+            if (!data.features || data.features.length === 0) {
+                container.innerHTML = '<p>沒有數據</p>';
+                return;
+            }
+
+            // Multi-level grouping
+            const grouped = {};
+            data.features.forEach(feature => {
+                const dataset = feature.properties.數據集 || '未分類';
+                const district = feature.properties.地區 || '未分類';
+                const name = feature.properties.名稱 || '未分類';
+
+                if (!grouped[dataset]) grouped[dataset] = {};
+                if (!grouped[dataset][district]) grouped[dataset][district] = {};
+                if (!grouped[dataset][district][name]) grouped[dataset][district][name] = [];
+
+                grouped[dataset][district][name].push(feature);
+            });
+
+            // Create nested accordions
+            Object.keys(grouped).sort().forEach(dataset => {
+                const datasetAccordion = createGroupAccordion(
+                    dataset,
+                    countFeatures(grouped[dataset]),
+                    `dataset-${dataset}`
+                );
+
+                const datasetContent = datasetAccordion.querySelector('.data-group-content');
+
+                Object.keys(grouped[dataset]).sort().forEach(district => {
+                    const districtAccordion = createGroupAccordion(
+                        district,
+                        countFeatures(grouped[dataset][district]),
+                        `district-${district}`
+                    );
+
+                    const districtContent = districtAccordion.querySelector('.data-group-content');
+
+                    Object.keys(grouped[dataset][district]).sort().forEach(name => {
+                        const nameAccordion = createGroupAccordion(
+                            name,
+                            grouped[dataset][district][name].length,
+                            `name-${name}`
+                        );
+
+                        const nameContent = nameAccordion.querySelector('.data-group-content');
+
+                        grouped[dataset][district][name].forEach(feature => {
+                            const item = createHeatShelterItem(feature);
+                            item.addEventListener('click', () => {
+                                handleHeatSheltersItemClick(feature);
+                            });
+                            nameContent.appendChild(item);
+                        });
+
+                        districtContent.appendChild(nameAccordion);
+                    });
+
+                    datasetContent.appendChild(districtAccordion);
+                });
+
+                container.appendChild(datasetAccordion);
+            });
+        }
+
+        function createHeatShelterItem(feature) {
+            const props = feature.properties;
+            const item = document.createElement('div');
+            item.className = 'data-item';
+            item.dataset.gmlId = props.GmlID;
+
+            item.innerHTML = `
+                <div class="data-item-name">${props.名稱 || props.Name || '未命名'}</div>
+                <div class="data-item-details">
+                    <div class="data-detail-item">
+                        <i class="fas fa-map-marker-alt"></i>
+                        <span>${props.地址 || props.Address || '地址未提供'}</span>
+                    </div>
+                    <div class="data-detail-item">
+                        <i class="fas fa-map-pin"></i>
+                        <span>${props.地區 || props.District || '地區未提供'}</span>
+                    </div>
+                </div>
+            `;
+
+            return item;
+        }
+
+        // 8. Community Centers (CSV data)
+        function populateCommunityCentersList(data, container) {
+            if (!data.data || data.data.length === 0) {
+                container.innerHTML = '<p>沒有數據</p>';
+                return;
+            }
+
+            // Group by 機構 / 中心名稱 -> 地址
+            const grouped = {};
+            data.data.forEach((row, index) => {
+                const name = row['機構 / 中心名稱'] || row['Name of Agency / Centre'] || '未分類';
+                const address = row['地址'] || row['Address'] || '未分類';
+
+                if (!grouped[name]) grouped[name] = {};
+                if (!grouped[name][address]) grouped[name][address] = [];
+                grouped[name][address].push({ row, index });
+            });
+
+            // Create nested accordions
+            Object.keys(grouped).sort().forEach(name => {
+                const nameAccordion = createGroupAccordion(
+                    name,
+                    countFeatures(grouped[name]),
+                    `name-${name}`
+                );
+
+                const nameContent = nameAccordion.querySelector('.data-group-content');
+
+                Object.keys(grouped[name]).sort().forEach(address => {
+                    const addressAccordion = createGroupAccordion(
+                        address,
+                        grouped[name][address].length,
+                        `address-${address}`
+                    );
+
+                    const addressContent = addressAccordion.querySelector('.data-group-content');
+
+                    grouped[name][address].forEach(({ row, index }) => {
+                        const item = createCommunityCenterItem(row, index);
+                        addressContent.appendChild(item);
+                    });
+
+                    nameContent.appendChild(addressAccordion);
+                });
+
+                container.appendChild(nameAccordion);
+            });
+        }
+
+        function createCommunityCenterItem(row, index) {
+            const item = document.createElement('div');
+            item.className = 'data-item';
+            item.dataset.index = index;
+
+            const name = row['機構 / 中心名稱'] || row['Name of Agency / Centre'] || '未命名';
+            const address = row['地址'] || row['Address'] || '地址未提供';
+            const phone = row['電話'] || row['Telephone'] || '電話未提供';
+
+            item.innerHTML = `
+                <div class="data-item-name">${name}</div>
+                <div class="data-item-details">
+                    <div class="data-detail-item">
+                        <i class="fas fa-map-marker-alt"></i>
+                        <span>${address}</span>
+                    </div>
+                    <div class="data-detail-item">
+                        <i class="fas fa-phone"></i>
+                        <span>${phone}</span>
+                    </div>
+                </div>
+            `;
+
+            return item;
+        }
+
+        // 9. Holiday Camps
+        function populateHolidayCampsList(data, container) {
+            if (!data.features || data.features.length === 0) {
+                container.innerHTML = '<p>沒有數據</p>';
+                return;
+            }
+
+            // Multi-level grouping
+            const grouped = {};
+            data.features.forEach(feature => {
+                const dataset = feature.properties.DATASET_TC || '未分類';
+                const district = feature.properties.SEARCH01_TC || '未分類';
+                const name = feature.properties.NAME_TC || '未分類';
+
+                if (!grouped[dataset]) grouped[dataset] = {};
+                if (!grouped[dataset][district]) grouped[dataset][district] = {};
+                if (!grouped[dataset][district][name]) grouped[dataset][district][name] = [];
+
+                grouped[dataset][district][name].push(feature);
+            });
+
+            // Create nested accordions
+            Object.keys(grouped).sort().forEach(dataset => {
+                const datasetAccordion = createGroupAccordion(
+                    dataset,
+                    countFeatures(grouped[dataset]),
+                    `dataset-${dataset}`
+                );
+
+                const datasetContent = datasetAccordion.querySelector('.data-group-content');
+
+                Object.keys(grouped[dataset]).sort().forEach(district => {
+                    const districtAccordion = createGroupAccordion(
+                        district,
+                        countFeatures(grouped[dataset][district]),
+                        `district-${district}`
+                    );
+
+                    const districtContent = districtAccordion.querySelector('.data-group-content');
+
+                    Object.keys(grouped[dataset][district]).sort().forEach(name => {
+                        const nameAccordion = createGroupAccordion(
+                            name,
+                            grouped[dataset][district][name].length,
+                            `name-${name}`
+                        );
+
+                        const nameContent = nameAccordion.querySelector('.data-group-content');
+
+                        grouped[dataset][district][name].forEach(feature => {
+                            const item = createHolidayCampItem(feature);
+                            item.addEventListener('click', () => {
+                                handleHolidayCampsItemClick(feature);
+                            });
+                            nameContent.appendChild(item);
+                        });
+
+                        districtContent.appendChild(nameAccordion);
+                    });
+
+                    datasetContent.appendChild(districtAccordion);
+                });
+
+                container.appendChild(datasetAccordion);
+            });
+        }
+
+        function createHolidayCampItem(feature) {
+            const props = feature.properties;
+            const item = document.createElement('div');
+            item.className = 'data-item';
+
+            item.innerHTML = `
+                <div class="data-item-name">${props.NAME_TC || props.NAME_EN || '未命名'}</div>
+                <div class="data-item-details">
+                    <div class="data-detail-item">
+                        <i class="fas fa-map-marker-alt"></i>
+                        <span>${props.ADDRESS_TC || props.ADDRESS_EN || '地址未提供'}</span>
+                    </div>
+                    <div class="data-detail-item">
+                        <i class="fas fa-phone"></i>
+                        <span>${props.NSEARCH02_TC || props.NSEARCH02_EN || '電話未提供'}</span>
+                    </div>
+                </div>
+            `;
+
+            return item;
+        }
+
+        // ==================== Event handler functions ====================
+
+        function handlePiersItemClick(feature) {
+            if (!feature.geometry || feature.geometry.type !== 'Point') return;
+
+            const coords = feature.geometry.coordinates;
+            map.setView([coords[1], coords[0]], 16);
+
+            // Create popup
+            const props = feature.properties;
+            const popupContent = `
+                <div style="font-weight: bold; margin-bottom: 5px; color: #2c3e50">
+                    ${props.STRUCTURE_ || '公眾碼頭'}
+                </div>
+                <div><strong>結構編號:</strong> ${props.STRUCTURE_ || '未提供'}</div>
+                <div><strong>OBJECTID:</strong> ${props.OBJECTID || '未提供'}</div>
+            `;
+
+            if (currentPopup) {
+                map.closePopup(currentPopup);
+            }
+
+            currentPopup = L.popup()
+                .setLatLng([coords[1], coords[0]])
+                .setContent(popupContent)
+                .openOn(map);
+        }
+
+        function handleParksItemClick(feature) {
+            if (!feature.geometry || feature.geometry.type !== 'Point') return;
+
+            const coords = feature.geometry.coordinates;
+            map.setView([coords[1], coords[0]], 16);
+
+            // Create popup with all details
+            const props = feature.properties;
+            const popupContent = `
+                <div style="font-weight: bold; margin-bottom: 5px; color: #2c3e50">
+                    ${props.NameTC || props.NameEN || '公園'}
+                </div>
+                <div><strong>地址:</strong> ${props.AddressTC || props.AddressEN || '未提供'}</div>
+                <div><strong>地區:</strong> ${props.DistrictTC || props.DistrictEN || '未提供'}</div>
+                ${props.FacilityTypeTC ? `<div><strong>設施類型:</strong> ${props.FacilityTypeTC}</div>` : ''}
+                ${props.FacilityDetailsTC ? `<div><strong>設施詳情:</strong> ${props.FacilityDetailsTC}</div>` : ''}
+                ${props.OpeningHoursTC ? `<div><strong>開放時間:</strong> ${props.OpeningHoursTC}</div>` : ''}
+                ${props.TelephoneTC ? `<div><strong>電話:</strong> ${props.TelephoneTC}</div>` : ''}
+                ${props.WebsiteTC ? `<div><strong>網站:</strong> <a href="${props.WebsiteTC}" target="_blank">${props.WebsiteTC}</a></div>` : ''}
+            `;
+
+            if (currentPopup) {
+                map.closePopup(currentPopup);
+            }
+
+            currentPopup = L.popup()
+                .setLatLng([coords[1], coords[0]])
+                .setContent(popupContent)
+                .openOn(map);
+        }
+
+        function handlePetParksItemClick(feature) {
+            if (!feature.geometry || feature.geometry.type !== 'Point') return;
+
+            const coords = feature.geometry.coordinates;
+            map.setView([coords[1], coords[0]], 16);
+
+            const props = feature.properties;
+            const popupContent = `
+                <div style="font-weight: bold; margin-bottom: 5px; color: #2c3e50">
+                    ${props.NameTC || props.NameEN || '寵物共享公園'}
+                </div>
+                <div><strong>地址:</strong> ${props.AddressTC || props.AddressEN || '未提供'}</div>
+                <div><strong>地區:</strong> ${props.DistrictTC || props.DistrictEN || '未提供'}</div>
+                ${props.FacilityDetailsTC ? `<div><strong>設施詳情:</strong> ${props.FacilityDetailsTC}</div>` : ''}
+                ${props.OpeningHoursTC ? `<div><strong>開放時間:</strong> ${props.OpeningHoursTC}</div>` : ''}
+                ${props.TelephoneTC ? `<div><strong>電話:</strong> ${props.TelephoneTC}</div>` : ''}
+                ${props.WebsiteTC ? `<div><strong>網站:</strong> <a href="${props.WebsiteTC}" target="_blank">${props.WebsiteTC}</a></div>` : ''}
+            `;
+
+            if (currentPopup) {
+                map.closePopup(currentPopup);
+            }
+
+            currentPopup = L.popup()
+                .setLatLng([coords[1], coords[0]])
+                .setContent(popupContent)
+                .openOn(map);
+        }
+
+        function handleModelCarParksItemClick(feature) {
+            if (!feature.geometry || feature.geometry.type !== 'Point') return;
+
+            const coords = feature.geometry.coordinates;
+            map.setView([coords[1], coords[0]], 16);
+
+            const props = feature.properties;
+            const popupContent = `
+                <div style="font-weight: bold; margin-bottom: 5px; color: #2c3e50">
+                    ${props.Name_cn || props.Name_en || '模型車場'}
+                </div>
+                <div><strong>地址:</strong> ${props.Address_cn || props.Address_en || '未提供'}</div>
+                <div><strong>地區:</strong> ${props.District_cn || props.District_en || '未提供'}</div>
+                ${props.Facilities_b5 ? `<div><strong>設施:</strong> ${props.Facilities_b5}</div>` : ''}
+                ${props.Ancillary_facilities_cn ? `<div><strong>附屬設施:</strong> ${props.Ancillary_facilities_cn}</div>` : ''}
+                ${props.Opening_hours_cn ? `<div><strong>開放時間:</strong> ${props.Opening_hours_cn}</div>` : ''}
+                ${props.Phone ? `<div><strong>電話:</strong> ${props.Phone}</div>` : ''}
+            `;
+
+            if (currentPopup) {
+                map.closePopup(currentPopup);
+            }
+
+            currentPopup = L.popup()
+                .setLatLng([coords[1], coords[0]])
+                .setContent(popupContent)
+                .openOn(map);
+        }
+
+        function handleDogGardensItemClick(feature) {
+            if (!feature.geometry || feature.geometry.type !== 'Point') return;
+
+            const coords = feature.geometry.coordinates;
+            map.setView([coords[1], coords[0]], 16);
+
+            const props = feature.properties;
+            const popupContent = `
+                <div style="font-weight: bold; margin-bottom: 5px; color: #2c3e50">
+                    ${props.NameTC || props.NameEN || '狗公園/寵物公園'}
+                </div>
+                <div><strong>地址:</strong> ${props.AddressTC || props.AddressEN || '未提供'}</div>
+                <div><strong>地區:</strong> ${props.DistrictTC || props.DistrictEN || '未提供'}</div>
+                ${props.FacilityTypeTC ? `<div><strong>設施類型:</strong> ${props.FacilityTypeTC}</div>` : ''}
+                ${props.FacilityDetailsTC ? `<div><strong>設施詳情:</strong> ${props.FacilityDetailsTC}</div>` : ''}
+                ${props.OpeningHoursTC ? `<div><strong>開放時間:</strong> ${props.OpeningHoursTC}</div>` : ''}
+                ${props.TelephoneTC ? `<div><strong>電話:</strong> ${props.TelephoneTC}</div>` : ''}
+            `;
+
+            if (currentPopup) {
+                map.closePopup(currentPopup);
+            }
+
+            currentPopup = L.popup()
+                .setLatLng([coords[1], coords[0]])
+                .setContent(popupContent)
+                .openOn(map);
+        }
+
+        function handleLibrariesItemClick(feature) {
+            if (!feature.geometry || feature.geometry.type !== 'Point') return;
+
+            const coords = feature.geometry.coordinates;
+            map.setView([coords[1], coords[0]], 16);
+
+            const props = feature.properties;
+            const popupContent = `
+                <div style="font-weight: bold; margin-bottom: 5px; color: #2c3e50">
+                    ${props.NameTC || props.NameEN || '圖書館'}
+                </div>
+                <div><strong>地址:</strong> ${props.AddressTC || props.AddressEN || '未提供'}</div>
+                <div><strong>地區:</strong> ${props.DistrictTC || props.DistrictEN || '未提供'}</div>
+                <div><strong>圖書館類型:</strong> ${props.LibraryTypeTC || props.LibraryTypeEN || '未提供'}</div>
+                ${props.OpeningHoursTC ? `<div><strong>開放時間:</strong> ${props.OpeningHoursTC}</div>` : ''}
+                ${props.TelephoneTC ? `<div><strong>電話:</strong> ${props.TelephoneTC}</div>` : ''}
+                ${props.WebsiteTC ? `<div><strong>網站:</strong> <a href="${props.WebsiteTC}" target="_blank">${props.WebsiteTC}</a></div>` : ''}
+            `;
+
+            if (currentPopup) {
+                map.closePopup(currentPopup);
+            }
+
+            currentPopup = L.popup()
+                .setLatLng([coords[1], coords[0]])
+                .setContent(popupContent)
+                .openOn(map);
+        }
+
+        function handleHeatSheltersItemClick(feature) {
+            if (!feature.geometry || feature.geometry.type !== 'Point') return;
+
+            const coords = feature.geometry.coordinates;
+            map.setView([coords[1], coords[0]], 16);
+
+            const props = feature.properties;
+            const popupContent = `
+                <div style="font-weight: bold; margin-bottom: 5px; color: #2c3e50">
+                    ${props.名稱 || props.Name || '臨時避暑中心'}
+                </div>
+                <div><strong>地址:</strong> ${props.地址 || props.Address || '未提供'}</div>
+                <div><strong>地區:</strong> ${props.地區 || props.District || '未提供'}</div>
+                <div><strong>最後更新:</strong> ${props.Last_Updated_Date___最後更新日期 || '未提供'}</div>
+            `;
+
+            if (currentPopup) {
+                map.closePopup(currentPopup);
+            }
+
+            currentPopup = L.popup()
+                .setLatLng([coords[1], coords[0]])
+                .setContent(popupContent)
+                .openOn(map);
+        }
+
+        function handleHolidayCampsItemClick(feature) {
+            if (!feature.geometry || feature.geometry.type !== 'Point') return;
+
+            const coords = feature.geometry.coordinates;
+            map.setView([coords[1], coords[0]], 16);
+
+            const props = feature.properties;
+            const popupContent = `
+                <div style="font-weight: bold; margin-bottom: 5px; color: #2c3e50">
+                    ${props.NAME_TC || props.NAME_EN || '度假營'}
+                </div>
+                <div><strong>地址:</strong> ${props.ADDRESS_TC || props.ADDRESS_EN || '未提供'}</div>
+                <div><strong>地區:</strong> ${props.SEARCH01_TC || props.SEARCH01_EN || '未提供'}</div>
+                ${props.NSEARCH02_TC ? `<div><strong>電話:</strong> ${props.NSEARCH02_TC}</div>` : ''}
+                ${props.NSEARCH03_TC ? `<div><strong>傳真:</strong> ${props.NSEARCH03_TC}</div>` : ''}
+                ${props.NSEARCH04_TC ? `<div><strong>電郵:</strong> ${props.NSEARCH04_TC}</div>` : ''}
+                ${props.NSEARCH05_TC ? `<div><strong>網站:</strong> <a href="${props.NSEARCH05_TC}" target="_blank">${props.NSEARCH05_TC}</a></div>` : ''}
+                <div><strong>最後更新:</strong> ${props.LASTUPDATE || '未提供'}</div>
+            `;
+
+            if (currentPopup) {
+                map.closePopup(currentPopup);
+            }
+
+            currentPopup = L.popup()
+                .setLatLng([coords[1], coords[0]])
+                .setContent(popupContent)
+                .openOn(map);
+        }
+
+        // ==================== Helper functions ====================
+
+        function createGroupAccordion(title, count, id) {
+            const accordion = document.createElement('div');
+            accordion.className = 'data-group-accordion';
+            accordion.id = id;
+
+            accordion.innerHTML = `
+                <div class="data-group-header">
+                    <span>
+                        ${title}
+                        <span class="item-counter">${count}</span>
+                    </span>
+                    <i class="fas fa-chevron-down"></i>
+                </div>
+                <div class="data-group-content"></div>
+            `;
+
+            // Add click event
+            const header = accordion.querySelector('.data-group-header');
+            const content = accordion.querySelector('.data-group-content');
+
+            header.addEventListener('click', function () {
+                const isActive = this.classList.contains('active');
+                this.classList.toggle('active');
+                content.classList.toggle('active');
+
+                const icon = this.querySelector('.fa-chevron-down');
+                icon.style.transform = isActive ? 'rotate(0deg)' : 'rotate(180deg)';
+            });
+
+            return accordion;
+        }
+
+        function countFeatures(obj) {
+            let count = 0;
+            if (Array.isArray(obj)) {
+                return obj.length;
+            }
+            for (const key in obj) {
+                count += countFeatures(obj[key]);
+            }
+            return count;
+        }
+
+    </script>
+</body>
+
+</html>
