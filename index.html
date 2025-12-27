@@ -147,17 +147,20 @@
         }
 
         .data-group-content {
+            display: none;
             background-color: #f8f9fa;
             padding: 0;
-            max-height: 0;
+            /* max-height: 0; */
             overflow: hidden;
             transition: max-height 0.3s ease, padding 0.3s ease;
             border-radius: 0 0 6px 6px;
         }
 
         .data-group-content.active {
-            padding: 15px;
+            display: block;
+            padding: 10px 0 0 10px;
             overflow-y: auto;
+            height: fit-content;
         }
 
         .data-item {
@@ -502,9 +505,10 @@
         .loading {
             display: none;
             position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
+            top: 0%;
+            left: 0%;
+            width: 100%;
+            height: 100%;
             background-color: rgba(255, 255, 255, 0.9);
             padding: 20px 30px;
             border-radius: 8px;
@@ -575,7 +579,7 @@
         .data-source-status {
             font-size: 0.8rem;
             opacity: 0.8;
-            margin-top: 5px;
+            margin-bottom: 10px;
         }
 
         /* Layer controls */
@@ -747,7 +751,7 @@
                         </div>
 
                         <div class="layer-controls">
-                            <h4><i class="fas fa-layer-group"></i> 圖層控制</h4>
+                            <h4 style="margin-bottom:10px"><i class="fas fa-layer-group"></i> 圖層控制</h4>
                             <!-- Layer toggles will be added dynamically -->
                         </div>
 
@@ -1203,14 +1207,11 @@
                 // Clear UI
                 document.getElementById('dataSourcesList').innerHTML = '';
 
-                // // Load each data source
-                // for (const source of DATA_SOURCES) {
-                //     await loadDataSource(source);
-                // }
-
                 // Load each data source
+                document.querySelector(".data-source-item").style.display = "none";
                 const promises = DATA_SOURCES.map(source => loadDataSource(source));
                 await Promise.all(promises);
+                document.querySelector(".data-source-item").style.display = "block";
 
                 updateLegend();
                 showNotification('所有數據已成功載入');
@@ -1228,25 +1229,27 @@
             try {
                 let data;
 
-                if (isTerminated) return;
-
                 if (source.format === 'geojson') {
                     const response = await fetch(`${PROXY_URL}/${source.url}`);
                     if (!response.ok) {
-                        document.querySelector('body').style.display = 'none';
-                        alert(`無法載入 ${source.displayName}，請啟用 PROXY: ${PROXY_URL}。`);
-                        window.open(`${PROXY_URL}/corsdemo`, '_blank');
-                        window.isTerminated = true;
+                        if (!isTerminated) {
+                            window.isTerminated = true;
+                            document.querySelector('body').style.display = 'none';
+                            alert(`無法載入 ${source.displayName}，請啟用 PROXY: ${PROXY_URL}。`);
+                            window.open(`${PROXY_URL}/corsdemo`, '_blank');
+                        }
                         return;
                     };
                     data = await response.json();
                 } else if (source.format === 'csv') {
                     const response = await fetch(`${PROXY_URL}/${source.url}`);
                     if (!response.ok) {
-                        document.querySelector('body').style.display = 'none';
-                        alert(`無法載入 ${source.displayName}，請啟用 PROXY: ${PROXY_URL}。`);
-                        window.open(`${PROXY_URL}/corsdemo`, '_blank');
-                        window.isTerminated = true;
+                        if (!isTerminated) {
+                            window.isTerminated = true;
+                            document.querySelector('body').style.display = 'none';
+                            alert(`無法載入 ${source.displayName}，請啟用 PROXY: ${PROXY_URL}。`);
+                            window.open(`${PROXY_URL}/corsdemo`, '_blank');
+                        }
                         return;
                     };
                     const csvText = await response.text();
